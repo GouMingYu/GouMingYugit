@@ -1,0 +1,203 @@
+
+# 编译安装 Zabbix 3.0 #
+
+## 安装Zabbix-server ##
+
+#### 请准备好lnmp或lamp环境，本文使用lnmp环境 ####
+
+**下载依赖**
+
+	yum -y install mysql-devel libxml2-devel net-snmp-devel libcurl-devel php-mysql libXpm php-bcmath php-gd php-mbstring php-xml t1lib
+
+
+**下载Zabbix软件包**
+
+	wget http://iweb.dl.sourceforge.net/project/zabbix/ZABBIX%20Latest%20Development/3.0.0alpha2/zabbix-3.0.0alpha2.tar.gz
+
+
+**编译Zabbix**
+
+	tar xf zabbix-3.0.0alpha2.tar.gz
+	cd zabbix-3.0.0alpha2
+	groupadd zabbix
+	useradd -g zabbix zabbix
+	./configure --prefix=/usr/local/zabbix-server --enable-server --with-mysql --with-net-snmp --with-libcurl --with-libxml2 --enable-agent
+	make && make install
+
+
+**配置Zabbix**
+
+1 . 创建zabbix用户
+
+	groupadd zabbix
+	useradd -g zabbix zabbix
+
+
+2 . 创建数据库和授权用户
+
+	create database zabbix default charset utf8;
+	  use zabbix;
+	    source /usr/local/src/zabbix-3.0.0alpha2/database/mysql/schema.sql
+	    source /usr/local/src/zabbix-3.0.0alpha2/database/mysql/images.sql
+	    source /usr/local/src/zabbix-3.0.0alpha2/database/mysql/date.sql
+	grant all on zabbix.* to 'zabbix'@'192.168.56.12' identified by '123456';
+
+
+>说明：
+     
+>数据文件导入的顺序不能变，也可以在命令行使用mysql命令导入数据文件
+
+3 . 修改配置文件并启动
+
+	mkdir /var/log/zabbix
+	chown -R zabbix:zabbix /var/log/zabbix
+	vim /usr/local/zabbix-server/etc/zabbix_server.conf
+	  LogFile=/var/log/zabbix/zabbix_server.log
+	  DBHost=192.168.56.12
+	  DBName=zabbix
+	  DBUser=zabbix
+	  DBPassword=123456
+	  ListenIP=127.0.0.1,192.168.56.12
+	/usr/local/zabbix-server/sbin/zabbix_server
+
+
+>说明：
+
+>这里和2.x版本的zabbix有点变化，2.x的zabbix版本需要自己添加zabbix端口，而3.0则不需要了！
+
+查看端口，已经开始监听了：
+
+
+	[root@localhost conf]# netstat -lntup | grep 1005
+	tcp        0      0 192.168.56.12:10051     0.0.0.0:*               LISTEN      53243/./zabbix_serv 
+	tcp        0      0 127.0.0.1:10051         0.0.0.0:*               LISTEN      53243/./zabbix_serv 
+
+
+4 . 配置web访问
+
+4.1 . 拷贝web文件到nginx的虚拟目录下
+
+	mkdir /usr/local/nginx/html/zabbix
+	cd zabbix-3.0.0alpha2/frontends/php/
+	\cp -a . /usr/local/nginx/html/zabbix/
+
+
+4.2 . 修改php.ini配置
+
+	vim php.ini
+	  date.timezone = Asia/Shanghai
+	  post_max_size = 16M
+	  max_execution_time = 300
+	  max_input_time = 300
+
+
+4.3 . 重启nginx服务并访问web界面
+
+	/usr/local/nginx/sbin/nginx -s reload
+
+
+浏览器输入IP地址访问
+
+>192.168.56.12/zabbix  
+
+可以看到下面图片内容即证明安装成功，配置没错一直下一步即可！
+
+![1](http://ww4.sinaimg.cn/mw690/006qKA7kgw1f4go3kptjyj30mv0dhjsh.jpg)
+
+下图中的值一定要都OK才可以下一步！
+
+![2](http://ww1.sinaimg.cn/mw690/006qKA7kgw1f4go642pe1j30mv0dhjtr.jpg)
+
+> 这里遇到错误：  
+> > 1 . 确认过php.ini文件参数修改正确  
+> > 2 . 安装php如果没有指定php.ini文件路径，默认会在/etc/目录下找，使用find查找出所有php.ini文件然后确认使用的是哪一个文件
+
+填写数据库信息
+![3](http://ww3.sinaimg.cn/mw690/006qKA7kgw1f4go5h2dhkj30mw0dg0uu.jpg)
+
+填写Zabbix-server信息
+![4](http://ww2.sinaimg.cn/mw690/006qKA7kgw1f4go435nwlj30mx0ddmyl.jpg)
+
+最后确认填写信息
+![5](http://ww2.sinaimg.cn/mw690/006qKA7kgw1f4go5cyhpoj30my0deac4.jpg)
+
+根据填写信息生成文件
+![6](http://ww1.sinaimg.cn/mw690/006qKA7kgw1f4go5nrgocj30mw0dcwg0.jpg)
+
+这里不通过，没事，点击链接下载文件到指定路径或者手动添加都行
+
+**根据提示下载连接文件放到指定路径或者手动编写文件**
+
+`vim /usr/local/nginx/html/zabbix/conf/zabbix.conf.php`  
+
+	<?php
+	// Zabbix GUI configuration file.
+	global $DB;
+	$DB['TYPE']     = 'MYSQL';
+	$DB['SERVER']   = '192.168.56.12';
+	$DB['PORT']     = '3306';
+	$DB['DATABASE'] = 'zabbix';
+	$DB['USER']     = 'zabbix';
+	$DB['PASSWORD'] = '123456';
+	// Schema name. Used for IBM DB2 and PostgreSQL.
+	$DB['SCHEMA'] = '';
+	$ZBX_SERVER      = 'localhost';
+	$ZBX_SERVER_PORT = '10051';
+	$ZBX_SERVER_NAME = '';
+	$IMAGE_FORMAT_DEFAULT = IMAGE_FORMAT_PNG;
+	?>
+
+修改好后刷新出现下图即可
+
+![7](http://cdn.xuliangwei.com/qiniu/455/image/7dd3ee39aa1d627e895b954f9d73f4be.png?imageView2/2/w/756/h/455)
+
+登录后的主页面
+
+![8](http://ww2.sinaimg.cn/mw690/006qKA7kgw1f4go3pbmczj311g0fzjvp.jpg)
+
+输入用户名/密码登录  
+默认用户名密码为：Admin zabbix
+
+![8](http://ww3.sinaimg.cn/mw690/006qKA7kgw1f4go3t7btgj30gd0f6aax.jpg)
+
+## 安装Zabbix-agent ##
+
+**Zabbix-agent的安装过程与Zabbix-server并没有太大区别**
+
+下载Zabbix软件包并安装
+
+	wget http://iweb.dl.sourceforge.net/project/zabbix/ZABBIX%20Latest%20Development/3.0.0alpha2/zabbix-3.0.0alpha2.tar.gz
+	tar xf zabbix-3.0.0alpha2.tar.gz 
+	cd zabbix-3.0.0alpha2
+	groupadd zabbix-agent
+	useradd -g zabbix-agent zabbix-agent
+	./configure --prefix=/usr/local/zabbix-agent --enable-agent
+	make && make install
+
+
+配置Zabbix-agent
+
+	mkdir /var/log/zabbix
+	chown -R zabbix-agent:zabbix-agent /var/log/zabbix/
+	vim /usr/local/zabbix-agent/etc/zabbix_agentd.conf
+	  LogFile=/var/log/zabbix/zabbix_agentd.log
+	  Server=192.168.56.12
+	  ServerActive=192.168.56.12
+	  Hostname=linux-node1
+	  User=zabbix-agent
+
+
+启动Zabbix-agent
+
+	/usr/local/zabbix-agent/sbin/zabbix_agent
+
+
+配置完成，可以在Web界面添加一台host了！
+
+添加一台host
+
+![1](http://ww3.sinaimg.cn/mw690/006qKA7kgw1f4go5qd6cmj30iz04a74y.jpg)
+![2](http://ww4.sinaimg.cn/mw690/006qKA7kgw1f4go3z9ix4j30r30f10uz.jpg)
+![3](http://ww2.sinaimg.cn/mw690/006qKA7kgw1f4go5k1hk5j30zn08atas.jpg)
+
+
